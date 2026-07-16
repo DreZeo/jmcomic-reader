@@ -8,7 +8,10 @@
   --font: "Inter", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
   --topbar-h: 3.5rem;
+  --page-pad-x: 1rem;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --touch: 44px;
   --space-1: 4px;
@@ -130,14 +133,22 @@ body {
   line-height: 1.55;
   touch-action: manipulation;
   overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   min-height: 100dvh;
+  overflow-x: hidden;
   background:
     radial-gradient(880px 400px at 10% -12%, var(--body-glow-a), transparent 55%),
     radial-gradient(720px 340px at 92% 0%, var(--body-glow-b), transparent 50%),
     var(--bg);
+}
+
+img,
+canvas {
+  max-width: 100%;
+  height: auto;
 }
 
 button,
@@ -200,9 +211,9 @@ code {
   z-index: var(--z-topbar);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   min-height: var(--topbar-h);
-  padding: calc(0.5rem + var(--safe-top)) 0.75rem 0.5rem;
+  padding: calc(0.45rem + var(--safe-top)) max(0.65rem, var(--safe-right)) 0.45rem max(0.65rem, var(--safe-left));
   background: var(--topbar-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -297,7 +308,7 @@ code {
 main {
   max-width: 760px;
   margin: 0 auto;
-  padding: 0.85rem 1rem calc(1.75rem + var(--safe-bottom));
+  padding: 0.85rem max(var(--page-pad-x), var(--safe-right)) calc(1.75rem + var(--safe-bottom)) max(var(--page-pad-x), var(--safe-left));
 }
 
 .view[hidden] {
@@ -307,6 +318,10 @@ main {
 .view-reader {
   max-width: none;
   margin: 0;
+  /* full-bleed reader: cancel main side padding */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
   padding: 0 0 calc(1.25rem + var(--safe-bottom));
 }
 
@@ -615,9 +630,10 @@ main {
 /* ── Reader ── */
 .reader-chrome {
   position: sticky;
-  top: 0;
+  /* Sit under the always-visible topbar (safe-area already in topbar padding) */
+  top: calc(var(--topbar-h) + var(--safe-top));
   z-index: var(--z-reader-chrome);
-  padding-top: var(--safe-top);
+  padding-top: 0;
   background: linear-gradient(180deg, var(--reader-chrome-from), var(--reader-chrome-mid) 70%, transparent);
   transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
 }
@@ -631,8 +647,8 @@ body.reader-active:not(.chrome-visible) .reader-chrome {
 .reader-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.7rem 0.8rem;
+  gap: 0.4rem;
+  padding: 0.4rem max(0.65rem, var(--safe-right)) 0.7rem max(0.65rem, var(--safe-left));
   max-width: 960px;
   margin: 0 auto;
 }
@@ -740,11 +756,18 @@ body.reader-active:not(.chrome-visible) .reader-chrome {
 
 .reader-footer {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.5rem;
   justify-content: center;
+  align-items: stretch;
   margin: 1rem auto 0;
-  padding: 0 1rem var(--safe-bottom);
+  padding: 0 max(0.85rem, var(--safe-right)) max(0.35rem, var(--safe-bottom)) max(0.85rem, var(--safe-left));
   max-width: 960px;
+}
+
+.reader-footer .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 12rem;
 }
 
 /* ── Overlay / Dialog ── */
@@ -754,7 +777,7 @@ body.reader-active:not(.chrome-visible) .reader-chrome {
   z-index: var(--z-overlay);
   display: grid;
   place-items: center;
-  padding: 1rem;
+  padding: max(0.75rem, var(--safe-top)) max(0.75rem, var(--safe-right)) max(0.75rem, var(--safe-bottom)) max(0.75rem, var(--safe-left));
   background: var(--overlay-scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -967,24 +990,205 @@ body.reader-active:not(.chrome-visible) .reader-chrome {
 
 /* ── Responsive ── */
 @media (max-width: 720px) {
+  :root {
+    --page-pad-x: 0.85rem;
+    --topbar-h: 3.25rem;
+  }
+
   .reader-nav .btn {
     padding-inline: 0.5rem;
+  }
+
+  .search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-field {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  #btn-search {
+    width: 100%;
+  }
+
+  .dialog-actions {
+    flex-wrap: wrap;
+  }
+
+  .dialog-actions .btn {
+    flex: 1 1 auto;
+    min-width: 7rem;
   }
 }
 
 @media (max-width: 480px) {
+  :root {
+    --page-pad-x: 0.75rem;
+    --topbar-h: 3.15rem;
+  }
+
+  /* Prev/next live in footer on narrow phones */
   .reader-nav {
     display: none;
   }
 
+  .topbar {
+    gap: 0.3rem;
+    padding-left: max(0.5rem, var(--safe-left));
+    padding-right: max(0.5rem, var(--safe-right));
+  }
+
+  .brand-text {
+    font-size: 0.9rem;
+  }
+
+  .icon-btn {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    min-height: 42px;
+  }
+
   .hero {
-    margin-top: 1rem;
-    padding: 1.35rem 1rem 1.2rem;
+    margin-top: 0.75rem;
+    padding: 1.2rem 0.95rem 1.1rem;
+    border-radius: var(--radius);
+  }
+
+  .hero h1 {
+    font-size: clamp(1.4rem, 7vw, 1.75rem);
+  }
+
+  .sub {
+    font-size: 0.92rem;
+    margin-bottom: 1rem;
+  }
+
+  .search-field {
+    min-height: 48px;
+  }
+
+  /* iOS: keep ≥16px to avoid focus zoom */
+  .search-field input,
+  .field input[type="url"],
+  .field input[type="text"] {
+    font-size: 16px;
+  }
+
+  .home-hint {
+    font-size: 0.82rem;
+  }
+
+  .album-meta h1 {
+    font-size: clamp(1.2rem, 6vw, 1.45rem);
+  }
+
+  .chapter-item {
+    min-height: 48px;
+    padding: 0.65rem 0.8rem;
+  }
+
+  .reader-title {
+    font-size: 0.88rem;
+  }
+
+  .reader-progress {
+    font-size: 0.78rem;
+  }
+
+  .reader-footer {
+    gap: 0.4rem;
+    margin-top: 0.85rem;
+  }
+
+  .reader-footer .btn {
+    max-width: none;
+    padding-inline: 0.55rem;
+    font-size: 0.9rem;
   }
 
   .segmented {
     grid-auto-flow: row;
     grid-auto-columns: unset;
+  }
+
+  .segmented label {
+    min-height: 44px;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: min(88dvh, 720px);
+    border-radius: 14px;
+    padding: 1rem 0.95rem;
+  }
+
+  .dialog-actions {
+    position: sticky;
+    bottom: 0;
+    margin-top: 0.9rem;
+    padding-top: 0.55rem;
+    background: linear-gradient(180deg, transparent, var(--bg-elevated) 28%);
+  }
+
+  .toast {
+    left: max(0.75rem, var(--safe-left));
+    right: max(0.75rem, var(--safe-right));
+    width: auto;
+    max-width: none;
+    transform: none;
+    bottom: calc(0.9rem + var(--safe-bottom));
+  }
+}
+
+/* Very small / narrow phones */
+@media (max-width: 360px) {
+  .brand-text {
+    max-width: 7.5rem;
+  }
+
+  .reader-footer .btn {
+    font-size: 0.84rem;
+    padding-inline: 0.4rem;
+  }
+}
+
+/* Landscape phones: tighter vertical chrome */
+@media (max-height: 480px) and (orientation: landscape) {
+  .hero {
+    margin-top: 0.4rem;
+    padding: 0.9rem 1rem;
+  }
+
+  .reader-chrome {
+    top: calc(2.75rem + var(--safe-top));
+  }
+
+  .dialog {
+    max-height: 92dvh;
+  }
+}
+
+/* Prefer denser touch feedback without hover dependency */
+@media (hover: none) {
+  .chapter-item:hover {
+    border-color: var(--border);
+    background: var(--bg-elevated);
+  }
+
+  .chapter-item:active {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+    background: color-mix(in srgb, var(--bg-elevated) 90%, var(--primary) 10%);
+  }
+
+  .btn.primary:hover:not(:disabled) {
+    filter: none;
+  }
+
+  .btn.primary:active:not(:disabled) {
+    filter: brightness(1.05);
   }
 }
 

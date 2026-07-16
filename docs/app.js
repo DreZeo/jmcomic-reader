@@ -462,6 +462,8 @@ function renderReaderShell() {
     state.currentIndex < 0 || state.currentIndex >= state.chapters.length - 1;
   $('btn-prev-ch').disabled = prevDisabled;
   $('btn-next-ch').disabled = nextDisabled;
+  const prev2 = $('btn-prev-ch-2');
+  if (prev2) prev2.disabled = prevDisabled;
   $('btn-next-ch-2').disabled = nextDisabled;
 
   const root = $('reader-pages');
@@ -631,6 +633,7 @@ function bindUi() {
   $('btn-back-album').addEventListener('click', backToAlbum);
   $('btn-back-album-2')?.addEventListener('click', backToAlbum);
   $('btn-prev-ch').addEventListener('click', () => goAdjacentChapter(-1));
+  $('btn-prev-ch-2')?.addEventListener('click', () => goAdjacentChapter(-1));
   $('btn-next-ch').addEventListener('click', () => goAdjacentChapter(1));
   $('btn-next-ch-2').addEventListener('click', () => goAdjacentChapter(1));
 

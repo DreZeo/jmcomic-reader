@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0c10" />
   <meta name="color-scheme" content="dark light" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="format-detection" content="telephone=no" />
   <meta name="description" content="JM Comic Reader — 沉浸式漫画阅读（Cloudflare Worker + GitHub Pages）" />
   <title>JM Reader</title>
   <script>
@@ -229,7 +233,8 @@
       <div id="reader-pages" class="reader-pages"></div>
 
       <div class="reader-footer">
-        <button type="button" id="btn-back-album-2" class="btn ghost">返回目录</button>
+        <button type="button" id="btn-prev-ch-2" class="btn ghost">上一话</button>
+        <button type="button" id="btn-back-album-2" class="btn ghost">目录</button>
         <button type="button" id="btn-next-ch-2" class="btn primary">下一话</button>
       </div>
     </section>
