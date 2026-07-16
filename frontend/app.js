@@ -6,6 +6,8 @@
 const STORAGE_KEY = 'jm-reader-settings';
 const AGE_KEY = 'jm-reader-age-ok';
 const THEME_COLORS = { dark: '#0b0c10', light: '#f6f7fb' };
+/** Concurrent page fetches/decodes in the reader */
+const PAGE_CONCURRENCY = 4;
 
 const state = {
   settings: loadSettings(),
@@ -14,6 +16,10 @@ const state = {
   currentIndex: -1,
   chapterDetail: null,
   chromeTimer: null,
+  /** Bumps when leaving a chapter so in-flight page loads abort */
+  readerGen: 0,
+  /** Last CDN hostname that successfully served an image via proxy */
+  preferredCdnHost: null,
 };
 
 function loadSettings() {
@@ -195,21 +201,55 @@ function imageCandidateUrls(originalUrl) {
   try {
     const u = new URL(originalUrl);
     const path = u.pathname + u.search;
-    const hosts = [u.hostname, ...CDN_HOSTS.filter((h) => h !== u.hostname)];
-    return hosts.map((h) => `https://${h}${path}`);
+    const preferred = state.preferredCdnHost;
+    const rest = CDN_HOSTS.filter((h) => h !== u.hostname && h !== preferred);
+    const hosts = [];
+    if (preferred) hosts.push(preferred);
+    if (!preferred || preferred !== u.hostname) hosts.push(u.hostname);
+    hosts.push(...rest);
+    // de-dupe while preserving order
+    const seen = new Set();
+    return hosts
+      .filter((h) => {
+        if (seen.has(h)) return false;
+        seen.add(h);
+        return true;
+      })
+      .map((h) => `https://${h}${path}`);
   } catch {
     return [originalUrl];
   }
 }
 
-async function fetchImageBlob(imgUrl) {
+/**
+ * Limited parallel map. Runs at most `limit` tasks at once.
+ * @template T, R
+ * @param {T[]} items
+ * @param {number} limit
+ * @param {(item: T, index: number) => Promise<R>} worker
+ */
+async function mapPool(items, limit, worker) {
+  const results = new Array(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await worker(items[i], i);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+async function fetchImageBlob(imgUrl, signal) {
   const errors = [];
 
   if (state.settings.useProxy) {
     for (const candidate of imageCandidateUrls(imgUrl)) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const src = proxyImageUrl(candidate);
       try {
-        const res = await fetch(src, { mode: 'cors' });
+        const res = await fetch(src, { mode: 'cors', signal });
         if (!res.ok) {
           let detail = '';
           try {
@@ -226,18 +266,26 @@ async function fetchImageBlob(imgUrl) {
           errors.push(`${new URL(candidate).hostname}:empty`);
           continue;
         }
+        try {
+          state.preferredCdnHost = new URL(candidate).hostname;
+        } catch {
+          /* ignore */
+        }
         return blob;
-      } catch {
+      } catch (e) {
+        if (e?.name === 'AbortError') throw e;
         errors.push(`${new URL(candidate).hostname}:net`);
       }
     }
   }
 
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   try {
-    const res = await fetch(imgUrl, { mode: 'cors' });
+    const res = await fetch(imgUrl, { mode: 'cors', signal });
     if (res.ok) return await res.blob();
     errors.push(`direct:${res.status}`);
-  } catch {
+  } catch (e) {
+    if (e?.name === 'AbortError') throw e;
     errors.push('direct:cors');
   }
 
@@ -248,8 +296,9 @@ async function fetchImageBlob(imgUrl) {
  * Decode JM row-scramble image onto a canvas.
  * Algorithm mirrors ScrambleDecoder / JmImageTool.decode_and_save.
  */
-async function decodeToCanvas(imgUrl, segments) {
-  const blob = await fetchImageBlob(imgUrl);
+async function decodeToCanvas(imgUrl, segments, signal) {
+  const blob = await fetchImageBlob(imgUrl, signal);
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
   const bitmap = await createImageBitmap(blob);
 
   const w = bitmap.width;
@@ -311,7 +360,9 @@ async function loadAlbum(jmidRaw) {
 
 async function loadChapter(photoId) {
   if (!state.album) throw new Error('无专辑上下文');
-  setLoading(true, '拉取章节图片…');
+  // Invalidate any in-flight page loads from the previous chapter
+  state.readerGen += 1;
+  setLoading(true, '拉取章节…');
   try {
     const data = await apiGet(
       `jmid=${encodeURIComponent(state.album.album_id)}&chapter=${encodeURIComponent(photoId)}&format=min`,
@@ -320,7 +371,8 @@ async function loadChapter(photoId) {
     if (!ch) throw new Error('章节无数据');
     state.chapterDetail = ch;
     state.currentIndex = state.chapters.findIndex((c) => c.photo_id === photoId);
-    await renderReader();
+    // Enter reader as soon as metadata is ready; pages load in parallel afterward
+    renderReaderShell();
     showView('reader');
     history.replaceState(
       { view: 'reader', jmid: state.album.album_id, photoId },
@@ -331,6 +383,8 @@ async function loadChapter(photoId) {
   } finally {
     setLoading(false);
   }
+  // Fire-and-forget parallel page load (errors surface per-page)
+  loadReaderPages().catch(() => {});
 }
 
 function renderAlbum() {
@@ -381,7 +435,8 @@ function renderAlbum() {
   });
 }
 
-async function renderReader() {
+/** Paint reader chrome + empty page slots immediately */
+function renderReaderShell() {
   const ch = state.chapterDetail;
   $('reader-title').textContent = ch.title || ch.photo_id;
   $('reader-progress').textContent =
@@ -415,18 +470,44 @@ async function renderReader() {
     placeholder.textContent = '加载中…';
     wrap.appendChild(placeholder);
     root.appendChild(wrap);
+  }
+}
 
-    await new Promise((r) => requestAnimationFrame(r));
+/** Load & decode pages with limited concurrency; skip if chapter changed */
+async function loadReaderPages() {
+  const gen = state.readerGen;
+  const ch = state.chapterDetail;
+  if (!ch) return;
+
+  const root = $('reader-pages');
+  const images = ch.images || [];
+
+  await mapPool(images, PAGE_CONCURRENCY, async (img) => {
+    if (gen !== state.readerGen) return;
+
+    const wrap = root.querySelector(`.page-wrap[data-index="${img.index}"]`);
+    if (!wrap) return;
+    const placeholder = wrap.querySelector('.page-placeholder, .page-error');
 
     try {
       const canvas = await decodeToCanvas(img.url, img.decode_segments);
-      placeholder.remove();
+      if (gen !== state.readerGen) {
+        canvas.width = 0;
+        canvas.height = 0;
+        return;
+      }
+      placeholder?.remove();
+      // Drop any prior canvas if re-entered
+      wrap.querySelector('canvas')?.remove();
       wrap.appendChild(canvas);
     } catch (e) {
-      placeholder.className = 'page-error';
-      placeholder.textContent = `第 ${img.index} 页失败：${e.message}`;
+      if (e?.name === 'AbortError' || gen !== state.readerGen) return;
+      if (placeholder) {
+        placeholder.className = 'page-error';
+        placeholder.textContent = `第 ${img.index} 页失败：${e.message}`;
+      }
     }
-  }
+  });
 }
 
 function goAdjacentChapter(delta) {
@@ -436,6 +517,7 @@ function goAdjacentChapter(delta) {
 }
 
 function backToAlbum() {
+  state.readerGen += 1;
   if (state.album) {
     renderAlbum();
     showView('album');
@@ -496,12 +578,14 @@ function bindUi() {
   });
 
   $('btn-home').addEventListener('click', () => {
+    state.readerGen += 1;
     showView('home');
     setBrand('', true);
     history.replaceState({ view: 'home' }, '', '#/');
   });
 
   $('btn-album-back')?.addEventListener('click', () => {
+    state.readerGen += 1;
     showView('home');
     setBrand('', true);
     history.replaceState({ view: 'home' }, '', '#/');
