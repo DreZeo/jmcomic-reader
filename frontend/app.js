@@ -8,6 +8,12 @@ const AGE_KEY = 'jm-reader-age-ok';
 const THEME_COLORS = { dark: '#0b0c10', light: '#f6f7fb' };
 /** Concurrent page fetches/decodes in the reader */
 const PAGE_CONCURRENCY = 4;
+/**
+ * Built-in Worker endpoint for this deployment.
+ * Not user-configurable (hidden from settings UI).
+ * Change here when redeploying to a different workers.dev / custom domain.
+ */
+const DEFAULT_API_BASE = 'https://jmcomic-api.userzxc001.workers.dev';
 
 const state = {
   settings: loadSettings(),
@@ -24,8 +30,6 @@ const state = {
 
 function loadSettings() {
   const defaults = {
-    apiBase: '',
-    useProxy: true,
     theme: 'dark',
     readerBg: 'dark',
   };
@@ -38,20 +42,22 @@ function loadSettings() {
     if (readerBg !== 'light' && readerBg !== 'dark' && readerBg !== 'match') {
       readerBg = 'dark';
     }
-    return {
-      ...defaults,
-      ...parsed,
-      theme,
-      readerBg,
-      useProxy: parsed.useProxy !== false,
-    };
+    // apiBase / useProxy intentionally ignored — endpoint is built-in
+    return { theme, readerBg };
   } catch {
     return { ...defaults };
   }
 }
 
 function saveSettings() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+  // Only persist UI prefs; never store API URL in localStorage
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      theme: state.settings.theme,
+      readerBg: state.settings.readerBg,
+    }),
+  );
 }
 
 function $(id) {
@@ -160,14 +166,13 @@ function showChrome(autoHide = true) {
 }
 
 function apiBase() {
-  return (state.settings.apiBase || '').replace(/\/+$/, '');
+  return String(DEFAULT_API_BASE || '').replace(/\/+$/, '');
 }
 
 function requireApi() {
   const base = apiBase();
   if (!base) {
-    openSettings(true);
-    throw new Error('请先在设置中填写 API 地址');
+    throw new Error('未配置内置 API 地址');
   }
   return base;
 }
@@ -198,7 +203,7 @@ const CDN_HOSTS = [
 ];
 
 function proxyImageUrl(originalUrl) {
-  if (!state.settings.useProxy) return originalUrl;
+  // Always proxy via Worker (CORS + CDN fallback); not user-toggleable
   const base = apiBase();
   if (!base) return originalUrl;
   return `${base}/proxy?url=${encodeURIComponent(originalUrl)}`;
@@ -251,43 +256,40 @@ async function mapPool(items, limit, worker) {
 async function fetchImageBlob(imgUrl, signal) {
   const errors = [];
 
-  // Worker proxy already races/falls back across CDNs + edge-caches.
+  // Worker proxy races/falls back across CDNs + edge-caches.
   // Prefer a single proxy hop; only rotate hosts client-side if that fails.
-  if (state.settings.useProxy) {
-    const candidates = imageCandidateUrls(imgUrl);
-    // First try original URL once (Worker multi-CDN); then at most 2 more hosts.
-    const tryList = candidates.slice(0, 1).concat(candidates.slice(1, 3));
-    for (const candidate of tryList) {
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      const src = proxyImageUrl(candidate);
-      try {
-        const res = await fetch(src, { mode: 'cors', signal });
-        if (!res.ok) {
-          let detail = '';
-          try {
-            const j = await res.clone().json();
-            detail = j.detail || j.error || '';
-          } catch {
-            /* ignore */
-          }
-          errors.push(`${new URL(candidate).hostname}:${res.status}${detail ? `(${detail})` : ''}`);
-          continue;
-        }
-        const blob = await res.blob();
-        if (!blob || blob.size < 32) {
-          errors.push(`${new URL(candidate).hostname}:empty`);
-          continue;
-        }
+  const candidates = imageCandidateUrls(imgUrl);
+  const tryList = candidates.slice(0, 1).concat(candidates.slice(1, 3));
+  for (const candidate of tryList) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    const src = proxyImageUrl(candidate);
+    try {
+      const res = await fetch(src, { mode: 'cors', signal });
+      if (!res.ok) {
+        let detail = '';
         try {
-          state.preferredCdnHost = new URL(candidate).hostname;
+          const j = await res.clone().json();
+          detail = j.detail || j.error || '';
         } catch {
           /* ignore */
         }
-        return blob;
-      } catch (e) {
-        if (e?.name === 'AbortError') throw e;
-        errors.push(`${new URL(candidate).hostname}:net`);
+        errors.push(`${new URL(candidate).hostname}:${res.status}${detail ? `(${detail})` : ''}`);
+        continue;
       }
+      const blob = await res.blob();
+      if (!blob || blob.size < 32) {
+        errors.push(`${new URL(candidate).hostname}:empty`);
+        continue;
+      }
+      try {
+        state.preferredCdnHost = new URL(candidate).hostname;
+      } catch {
+        /* ignore */
+      }
+      return blob;
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
+      errors.push(`${new URL(candidate).hostname}:net`);
     }
   }
 
@@ -546,10 +548,7 @@ function backToAlbum() {
   }
 }
 
-function openSettings(force = false) {
-  $('api-base').value = state.settings.apiBase || '';
-  $('use-proxy').checked = state.settings.useProxy !== false;
-
+function openSettings() {
   const theme = state.settings.theme === 'light' ? 'light' : 'dark';
   for (const el of document.querySelectorAll('input[name="theme"]')) {
     el.checked = el.value === theme;
@@ -564,8 +563,6 @@ function openSettings(force = false) {
   }
 
   $('settings-modal').hidden = false;
-  setTimeout(() => $('api-base').focus(), 50);
-  if (force) toast('请先配置 Worker API 地址');
 }
 
 function closeSettings() {
@@ -614,9 +611,6 @@ function bindUi() {
     if (e.target === $('settings-modal')) closeSettings();
   });
   $('settings-save').addEventListener('click', () => {
-    state.settings.apiBase = $('api-base').value.trim();
-    state.settings.useProxy = $('use-proxy').checked;
-
     const themeInput = document.querySelector('input[name="theme"]:checked');
     state.settings.theme = themeInput?.value === 'light' ? 'light' : 'dark';
 

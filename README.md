@@ -106,7 +106,7 @@ ALLOWED_ORIGINS = "https://你的用户名.github.io"
 
 1. 把 `frontend/*` 复制到仓库的 `docs/`（或在仓库设置里指定 `frontend` 为 Pages 目录——若平台支持）。
 2. GitHub → Settings → Pages → Source: **Deploy from a branch** → branch `main` → folder `/docs`（或 `/ (root)`）。
-3. 打开站点后点 **设置**，填入 Worker 地址。
+3. 前端内置 Worker 地址（`frontend/app.js` 中的 `DEFAULT_API_BASE`），**设置页不再暴露 API 配置**。
 
 本仓库可直接：
 
@@ -118,14 +118,15 @@ ALLOWED_ORIGINS = "https://你的用户名.github.io"
 rm -rf docs && mkdir -p docs && cp -r frontend/* docs/
 ```
 
-Worker API 地址只保存在浏览器 **localStorage**（设置页填写），**不会**写入 URL query，避免分享链接或历史记录泄露。
+更换 Worker 域名时：改 `frontend/app.js` 的 `DEFAULT_API_BASE`，再同步到 `docs/` 并重新部署 Pages。  
+GitHub Pages 为纯静态托管，无法读取 Cloudflare 环境变量；API 端点以构建时常量形式内置，前端 UI 不提供修改入口。
 
 ## 3. 前端使用
 
 1. 年龄确认门（本地记录）
-2. 设置 → 粘贴 Worker 地址 → 开启「图片代理」（默认开）
-3. 输入 `350234` / `JM350234` / 专辑链接
-4. 点章节进入阅读；图片按 `decode_segments` 在 Canvas 上还原
+2. 输入 `350234` / `JM350234` / 专辑链接（无需配置 API）
+3. 点章节进入阅读；图片经内置 Worker 代理并按 `decode_segments` 在 Canvas 上还原
+4. 设置页仅可改主题 / 阅读背景
 
 ## API 速查（与 PHP 兼容）
 

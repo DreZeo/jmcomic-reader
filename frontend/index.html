@@ -68,18 +68,6 @@
         </button>
       </div>
 
-      <label class="field" for="api-base">
-        <span class="field-label">API 地址</span>
-        <input id="api-base" type="url" inputmode="url" placeholder="https://jmcomic-api.xxx.workers.dev" autocomplete="off" spellcheck="false" />
-      </label>
-      <p class="hint">填写已部署的 Cloudflare Worker 地址。前端通过 <code>?jmid=</code> 与 <code>/proxy</code> 调用。</p>
-      <label class="check">
-        <input id="use-proxy" type="checkbox" checked />
-        <span>经 Worker 代理图片（推荐，解决 CDN 跨域）</span>
-      </label>
-
-      <hr class="settings-divider" />
-
       <div class="field">
         <span class="field-label" id="theme-label">界面主题</span>
         <div class="segmented" role="radiogroup" aria-labelledby="theme-label">
@@ -185,7 +173,7 @@
           </button>
         </form>
         <p id="home-error" class="error" role="alert" hidden></p>
-        <p class="home-hint">首次使用请在设置中填写 Cloudflare Worker API 地址</p>
+        <p class="home-hint">输入作品 ID 或链接后即可开始阅读</p>
       </div>
     </section>
 
