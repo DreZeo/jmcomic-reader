@@ -549,46 +549,66 @@ function backToAlbum() {
 }
 
 function openSettings() {
-  const theme = state.settings.theme === 'light' ? 'light' : 'dark';
-  for (const el of document.querySelectorAll('input[name="theme"]')) {
-    el.checked = el.value === theme;
-  }
+  try {
+    const modal = $('settings-modal');
+    if (!modal) {
+      toast('设置面板未找到');
+      return;
+    }
 
-  let readerBg = state.settings.readerBg;
-  if (readerBg !== 'light' && readerBg !== 'dark' && readerBg !== 'match') {
-    readerBg = 'dark';
-  }
-  for (const el of document.querySelectorAll('input[name="reader-bg"]')) {
-    el.checked = el.value === readerBg;
-  }
+    const theme = state.settings.theme === 'light' ? 'light' : 'dark';
+    for (const el of document.querySelectorAll('input[name="theme"]')) {
+      el.checked = el.value === theme;
+    }
 
-  $('settings-modal').hidden = false;
+    let readerBg = state.settings.readerBg;
+    if (readerBg !== 'light' && readerBg !== 'dark' && readerBg !== 'match') {
+      readerBg = 'dark';
+    }
+    for (const el of document.querySelectorAll('input[name="reader-bg"]')) {
+      el.checked = el.value === readerBg;
+    }
+
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    // Move focus into dialog for a11y / to confirm it opened
+    const focusEl = $('settings-close') || modal.querySelector('button, input');
+    setTimeout(() => focusEl?.focus?.(), 30);
+  } catch (e) {
+    console.error('openSettings failed', e);
+    toast(`无法打开设置：${e?.message || e}`);
+  }
 }
 
 function closeSettings() {
-  $('settings-modal').hidden = true;
+  const modal = $('settings-modal');
+  if (!modal) return;
+  modal.hidden = true;
+  modal.setAttribute('aria-hidden', 'true');
 }
 
 function bindUi() {
-  $('search-form').addEventListener('submit', (e) => {
+  $('search-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
-    const q = $('search-input').value.trim();
-    $('home-error').hidden = true;
+    const q = $('search-input')?.value.trim() || '';
+    const errEl = $('home-error');
+    if (errEl) errEl.hidden = true;
     const btn = $('btn-search');
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
     loadAlbum(q)
       .catch((err) => {
-        const el = $('home-error');
-        el.textContent = err.message;
-        el.hidden = false;
+        if (errEl) {
+          errEl.textContent = err.message;
+          errEl.hidden = false;
+        }
         toast(err.message);
       })
       .finally(() => {
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
       });
   });
 
-  $('btn-home').addEventListener('click', () => {
+  $('btn-home')?.addEventListener('click', () => {
     state.readerGen += 1;
     showView('home');
     setBrand('', true);
@@ -604,13 +624,17 @@ function bindUi() {
 
   $('btn-theme')?.addEventListener('click', () => toggleTheme());
 
-  $('btn-settings').addEventListener('click', () => openSettings());
-  $('settings-cancel').addEventListener('click', closeSettings);
+  $('btn-settings')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openSettings();
+  });
+  $('settings-cancel')?.addEventListener('click', closeSettings);
   $('settings-close')?.addEventListener('click', closeSettings);
-  $('settings-modal').addEventListener('click', (e) => {
+  $('settings-modal')?.addEventListener('click', (e) => {
     if (e.target === $('settings-modal')) closeSettings();
   });
-  $('settings-save').addEventListener('click', () => {
+  $('settings-save')?.addEventListener('click', () => {
     const themeInput = document.querySelector('input[name="theme"]:checked');
     state.settings.theme = themeInput?.value === 'light' ? 'light' : 'dark';
 
@@ -624,12 +648,12 @@ function bindUi() {
     toast('设置已保存');
   });
 
-  $('btn-back-album').addEventListener('click', backToAlbum);
+  $('btn-back-album')?.addEventListener('click', backToAlbum);
   $('btn-back-album-2')?.addEventListener('click', backToAlbum);
-  $('btn-prev-ch').addEventListener('click', () => goAdjacentChapter(-1));
+  $('btn-prev-ch')?.addEventListener('click', () => goAdjacentChapter(-1));
   $('btn-prev-ch-2')?.addEventListener('click', () => goAdjacentChapter(-1));
-  $('btn-next-ch').addEventListener('click', () => goAdjacentChapter(1));
-  $('btn-next-ch-2').addEventListener('click', () => goAdjacentChapter(1));
+  $('btn-next-ch')?.addEventListener('click', () => goAdjacentChapter(1));
+  $('btn-next-ch-2')?.addEventListener('click', () => goAdjacentChapter(1));
 
   // Tap page area to toggle reader toolbar (topbar always stays visible)
   $('reader-pages').addEventListener('click', () => {
@@ -691,9 +715,18 @@ function stripApiFromUrl() {
 }
 
 function main() {
-  applyTheme();
-  bindUi();
-  stripApiFromUrl();
+  try {
+    applyTheme();
+    bindUi();
+    stripApiFromUrl();
+  } catch (e) {
+    console.error('bootstrap failed', e);
+    try {
+      toast(`初始化失败：${e?.message || e}`);
+    } catch {
+      /* ignore */
+    }
+  }
   routeFromHash().catch((e) => toast(e.message));
 }
 

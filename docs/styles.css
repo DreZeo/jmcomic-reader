@@ -783,8 +783,15 @@ body.reader-active:not(.chrome-visible) .reader-chrome {
   -webkit-backdrop-filter: blur(8px);
 }
 
-.overlay[hidden] {
+.overlay[hidden],
+.overlay[aria-hidden='true'][hidden] {
   display: none !important;
+}
+
+/* Ensure settings sits above age-gate / chrome when open */
+#settings-modal:not([hidden]) {
+  display: grid;
+  z-index: calc(var(--z-overlay) + 5);
 }
 
 .dialog {
