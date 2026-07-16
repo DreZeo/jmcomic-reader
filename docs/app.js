@@ -13,7 +13,7 @@ const PAGE_CONCURRENCY = 4;
  * Not user-configurable (hidden from settings UI).
  * Change here when redeploying to a different workers.dev / custom domain.
  */
-const DEFAULT_API_BASE = 'https://jmcomic-api.userzxc001.workers.dev';
+const DEFAULT_API_BASE = 'https://api.superalpha369.space';
 
 const state = {
   settings: loadSettings(),

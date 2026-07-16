@@ -2,6 +2,13 @@ name = "jmcomic-api"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
 compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Custom domain on Cloudflare zone superalpha369.space
+# (avoids blocked/unstable *.workers.dev access from some networks)
+[[routes]]
+pattern = "api.superalpha369.space"
+custom_domain = true
 
 # Optional: bind a KV namespace for domain/scramble cache (recommended for production)
 # Create with: npx wrangler kv namespace create JM_CACHE

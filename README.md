@@ -65,7 +65,12 @@ cd worker
 npm run deploy
 ```
 
-记下输出的 `https://jmcomic-api.<你的子域>.workers.dev`。
+记下输出地址。本仓库生产入口使用自定义域：
+
+- API: `https://api.superalpha369.space`
+- 备用: `https://jmcomic-api.<子域>.workers.dev`（部分网络不可用）
+
+`worker/wrangler.toml` 已配置 `api.superalpha369.space` 自定义域；域名须在同一 Cloudflare 账号下。
 
 ### （可选）绑定 KV 缓存
 
