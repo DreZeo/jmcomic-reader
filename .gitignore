@@ -1,6 +1,8 @@
 node_modules/
 .wrangler/
 .wrangler-dist/
+worker/.deploy-out/
+worker/design-system/
 dist/
 .dev.vars
 .DS_Store
