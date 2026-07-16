@@ -1,7 +1,11 @@
 import { SCRAMBLE_268850, SCRAMBLE_421926 } from './config.js';
 import { md5 } from './crypto.js';
 
-/** Compute decode_segments for a page image. */
+/**
+ * Compute decode_segments for a page image.
+ * Official JMComic-Crawler-Python uses filename WITHOUT extension
+ * (JmImageTool.get_num / of_file_name(..., trim_suffix=True)).
+ */
 export function scrambleSegments(scrambleId, aid, filename) {
   const sid = parseInt(scrambleId, 10);
   const a = parseInt(aid, 10);
@@ -9,8 +13,10 @@ export function scrambleSegments(scrambleId, aid, filename) {
   if (a < sid) return 0;
   if (a < SCRAMBLE_268850) return 10;
 
+  // Strip extension: "00001.webp" → "00001"
+  const base = String(filename).replace(/\.[^./\\]+$/, '');
   const x = a < SCRAMBLE_421926 ? 10 : 8;
-  const h = md5(String(a) + filename);
+  const h = md5(String(a) + base);
   const n = h.charCodeAt(h.length - 1) % x;
   return n * 2 + 2;
 }
