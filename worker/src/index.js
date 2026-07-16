@@ -119,9 +119,48 @@ function isAllowedProxyUrl(raw) {
   }
   if (u.protocol !== 'https:') return false;
   if (!ALLOWED_CDN_HOSTS.has(u.hostname)) return false;
-  // Only photo media paths
-  if (!u.pathname.startsWith('/media/photos/')) return false;
+  // Only photo media paths: /media/photos/{id}/{file}
+  if (!/^\/media\/photos\/\d+\/[^/]+$/.test(u.pathname)) return false;
   return true;
+}
+
+/** Same path on every known CDN host (primary first). */
+function proxyCandidateUrls(primary) {
+  const u = new URL(primary);
+  const hosts = [u.hostname, ...[...ALLOWED_CDN_HOSTS].filter((h) => h !== u.hostname)];
+  return hosts.map((h) => `https://${h}${u.pathname}${u.search}`);
+}
+
+async function fetchUpstreamImage(targetUrl) {
+  const headers = {
+    'User-Agent': UA,
+    Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    Referer: 'https://18comic.vip/',
+    Origin: 'https://18comic.vip',
+  };
+
+  // Prefer plain fetch — cf cache options can break some upstreams.
+  let res = await fetch(targetUrl, {
+    method: 'GET',
+    headers,
+    redirect: 'follow',
+  });
+
+  // Retry once without Origin if blocked
+  if (res.status === 403 || res.status === 401) {
+    res = await fetch(targetUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': UA,
+        Accept: 'image/webp,image/*,*/*',
+        Referer: 'https://18comic.vip/',
+      },
+      redirect: 'follow',
+    });
+  }
+
+  return res;
 }
 
 async function handleProxy(request, env) {
@@ -131,29 +170,62 @@ async function handleProxy(request, env) {
     return errorJson(400, '无效的图片代理 URL', request, env);
   }
 
+  const attempts = [];
   try {
-    const res = await fetch(target, {
-      headers: {
-        'User-Agent': UA,
-        Accept: 'image/webp,image/*,*/*',
-        Referer: 'https://18comic.vip/',
-      },
-      cf: { cacheTtl: 3600, cacheEverything: true },
-    });
-    if (!res.ok) {
-      return errorJson(502, `上游图片 HTTP ${res.status}`, request, env);
+    for (const candidate of proxyCandidateUrls(target)) {
+      try {
+        const res = await fetchUpstreamImage(candidate);
+        if (!res.ok) {
+          attempts.push(`${new URL(candidate).hostname}:${res.status}`);
+          continue;
+        }
+
+        // Some CDNs return HTML error pages with 200 — require image-ish type or bytes
+        const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+        if (ct && !ct.startsWith('image/') && !ct.includes('octet-stream') && !ct.includes('webp')) {
+          attempts.push(`${new URL(candidate).hostname}:bad-ct:${ct}`);
+          continue;
+        }
+
+        const out = new Headers();
+        out.set('Content-Type', ct || 'image/webp');
+        out.set('Cache-Control', 'public, max-age=3600');
+        // Allow canvas read from Pages
+        out.set('Cross-Origin-Resource-Policy', 'cross-origin');
+        Object.entries(corsHeaders(request, env)).forEach(([k, v]) => out.set(k, v));
+        Object.entries(securityHeaders()).forEach(([k, v]) => out.set(k, v));
+
+        return new Response(res.body, { status: 200, headers: out });
+      } catch (e) {
+        attempts.push(`${new URL(candidate).hostname}:err`);
+        continue;
+      }
     }
 
-    const headers = new Headers();
-    const ct = res.headers.get('Content-Type') || 'image/webp';
-    headers.set('Content-Type', ct);
-    headers.set('Cache-Control', 'public, max-age=3600');
-    Object.entries(corsHeaders(request, env)).forEach(([k, v]) => headers.set(k, v));
-    Object.entries(securityHeaders()).forEach(([k, v]) => headers.set(k, v));
-
-    return new Response(res.body, { status: 200, headers });
+    // Surface detail so frontend/debug can see why (not generic 服务器内部错误)
+    return jsonResponse(
+      {
+        code: 502,
+        success: false,
+        error: '图片代理失败',
+        detail: attempts.join(', ') || 'no attempts',
+      },
+      502,
+      request,
+      env,
+    );
   } catch (e) {
-    return errorJson(502, '图片代理失败', request, env);
+    return jsonResponse(
+      {
+        code: 502,
+        success: false,
+        error: '图片代理失败',
+        detail: e?.message || String(e),
+      },
+      502,
+      request,
+      env,
+    );
   }
 }
 

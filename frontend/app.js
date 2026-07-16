@@ -86,6 +86,15 @@ async function apiGet(query) {
   return json.data;
 }
 
+const CDN_HOSTS = [
+  'cdn-msp.jmapiproxy1.cc',
+  'cdn-msp.jmapiproxy2.cc',
+  'cdn-msp2.jmapiproxy2.cc',
+  'cdn-msp3.jmapiproxy2.cc',
+  'cdn-msp.jmapinodeudzn.net',
+  'cdn-msp3.jmapinodeudzn.net',
+];
+
 function proxyImageUrl(originalUrl) {
   if (!state.settings.useProxy) return originalUrl;
   const base = apiBase();
@@ -93,15 +102,67 @@ function proxyImageUrl(originalUrl) {
   return `${base}/proxy?url=${encodeURIComponent(originalUrl)}`;
 }
 
+/** Build same-path URLs across known CDNs (for proxy fallback). */
+function imageCandidateUrls(originalUrl) {
+  try {
+    const u = new URL(originalUrl);
+    const path = u.pathname + u.search;
+    const hosts = [u.hostname, ...CDN_HOSTS.filter((h) => h !== u.hostname)];
+    return hosts.map((h) => `https://${h}${path}`);
+  } catch {
+    return [originalUrl];
+  }
+}
+
+async function fetchImageBlob(imgUrl) {
+  const errors = [];
+
+  if (state.settings.useProxy) {
+    for (const candidate of imageCandidateUrls(imgUrl)) {
+      const src = proxyImageUrl(candidate);
+      try {
+        const res = await fetch(src, { mode: 'cors' });
+        if (!res.ok) {
+          let detail = '';
+          try {
+            const j = await res.clone().json();
+            detail = j.detail || j.error || '';
+          } catch {
+            /* ignore */
+          }
+          errors.push(`${new URL(candidate).hostname}:${res.status}${detail ? `(${detail})` : ''}`);
+          continue;
+        }
+        const blob = await res.blob();
+        if (!blob || blob.size < 32) {
+          errors.push(`${new URL(candidate).hostname}:empty`);
+          continue;
+        }
+        return blob;
+      } catch (e) {
+        errors.push(`${new URL(candidate).hostname}:net`);
+      }
+    }
+  }
+
+  // Last resort: direct (may fail CORS for canvas)
+  try {
+    const res = await fetch(imgUrl, { mode: 'cors' });
+    if (res.ok) return await res.blob();
+    errors.push(`direct:${res.status}`);
+  } catch {
+    errors.push('direct:cors');
+  }
+
+  throw new Error(`图片加载失败 ${errors.slice(0, 3).join(' | ')}`);
+}
+
 /**
  * Decode JM row-scramble image onto a canvas.
  * Algorithm mirrors ScrambleDecoder::decodeFile in the PHP project.
  */
 async function decodeToCanvas(imgUrl, segments) {
-  const src = proxyImageUrl(imgUrl);
-  const res = await fetch(src, { mode: 'cors' });
-  if (!res.ok) throw new Error(`图片 HTTP ${res.status}`);
-  const blob = await res.blob();
+  const blob = await fetchImageBlob(imgUrl);
   const bitmap = await createImageBitmap(blob);
 
   const w = bitmap.width;
