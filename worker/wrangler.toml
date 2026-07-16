@@ -1,0 +1,17 @@
+name = "jmcomic-api"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Optional: bind a KV namespace for domain/scramble cache (recommended for production)
+# Create with: npx wrangler kv namespace create JM_CACHE
+# Then uncomment and paste the id:
+# [[kv_namespaces]]
+# binding = "JM_CACHE"
+# id = "YOUR_KV_NAMESPACE_ID"
+
+[vars]
+# Comma-separated origins allowed for CORS. Use * for public demo.
+ALLOWED_ORIGINS = "*"
+# Soft rate limit per IP per minute (best-effort, edge-local)
+RATE_MAX_PER_MIN = "60"

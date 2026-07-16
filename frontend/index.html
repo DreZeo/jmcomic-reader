@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c0d10" />
+  <meta name="color-scheme" content="dark" />
+  <title>JM Reader</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f5c542'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='16' font-family='system-ui' fill='%23111'%3EJM%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <!-- Age gate -->
+  <div id="age-gate" class="overlay" hidden>
+    <div class="dialog">
+      <h1>内容提示</h1>
+      <p>本页面仅供个人学习 / 技术演示。内容可能包含成人向漫画。</p>
+      <p class="muted">请确认你已年满当地法定成年年龄，并自行承担访问责任。</p>
+      <div class="dialog-actions">
+        <button type="button" id="age-leave" class="btn ghost">离开</button>
+        <button type="button" id="age-enter" class="btn primary">我已成年，进入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-modal" class="overlay" hidden>
+    <div class="dialog">
+      <h2>设置</h2>
+      <label class="field">
+        <span>API 地址（Cloudflare Worker）</span>
+        <input id="api-base" type="url" placeholder="https://jmcomic-api.xxx.workers.dev" autocomplete="off" />
+      </label>
+      <p class="hint">部署 Worker 后把地址填在这里。前端会通过 <code>?jmid=</code> 与 <code>/proxy</code> 调用它。</p>
+      <label class="check">
+        <input id="use-proxy" type="checkbox" checked />
+        <span>经 Worker 代理图片（推荐，解决 CDN 跨域）</span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="settings-cancel" class="btn ghost">取消</button>
+        <button type="button" id="settings-save" class="btn primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <button type="button" id="btn-home" class="icon-btn" title="首页" aria-label="首页">⌂</button>
+    <div class="brand" id="brand">JM Reader</div>
+    <button type="button" id="btn-settings" class="icon-btn" title="设置" aria-label="设置">⚙</button>
+  </header>
+
+  <main>
+    <!-- Home / search -->
+    <section id="view-home" class="view">
+      <div class="hero">
+        <h1>JM Comic Reader</h1>
+        <p class="sub">输入禁漫 ID / 链接，通过 Cloudflare Worker 解析并阅读</p>
+        <form id="search-form" class="search-row">
+          <input
+            id="search-input"
+            type="search"
+            placeholder="例如 350234 或 JM350234 或专辑链接"
+            enterkeyhint="search"
+            autocomplete="off"
+            required
+          />
+          <button type="submit" class="btn primary">打开</button>
+        </form>
+        <p id="home-error" class="error" hidden></p>
+        <div class="tips">
+          <h3>快速说明</h3>
+          <ol>
+            <li>先部署 <code>worker/</code> 到 Cloudflare</li>
+            <li>在设置里填写 Worker 地址</li>
+            <li>输入 jmid 即可浏览章节与图片</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- Album detail -->
+    <section id="view-album" class="view" hidden>
+      <div class="album-head">
+        <div class="album-meta">
+          <h1 id="album-title">—</h1>
+          <p id="album-authors" class="muted"></p>
+          <div id="album-tags" class="tags"></div>
+          <p id="album-desc" class="desc"></p>
+          <p id="album-stats" class="muted small"></p>
+        </div>
+      </div>
+      <div class="section-title">
+        <h2>章节</h2>
+        <span id="chapter-count" class="muted"></span>
+      </div>
+      <div id="chapter-list" class="chapter-list"></div>
+    </section>
+
+    <!-- Reader -->
+    <section id="view-reader" class="view" hidden>
+      <div class="reader-toolbar">
+        <button type="button" id="btn-prev-ch" class="btn ghost sm">上一话</button>
+        <div id="reader-title" class="reader-title">—</div>
+        <button type="button" id="btn-next-ch" class="btn ghost sm">下一话</button>
+      </div>
+      <div id="reader-pages" class="reader-pages"></div>
+      <div class="reader-footer">
+        <button type="button" id="btn-back-album" class="btn ghost">返回目录</button>
+        <button type="button" id="btn-next-ch-2" class="btn primary">下一话</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <div id="loading" class="loading" hidden>
+    <div class="spinner"></div>
+    <span id="loading-text">加载中…</span>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

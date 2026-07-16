@@ -1,0 +1,18 @@
+{
+  "name": "jmcomic-api-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JM Comic API on Cloudflare Workers",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.111.0"
+  }
+}
