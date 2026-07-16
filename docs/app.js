@@ -586,19 +586,20 @@ async function routeFromHash() {
   }
 }
 
+function stripApiFromUrl() {
+  // Never keep Worker API in the address bar (history / shared links).
+  const params = new URLSearchParams(location.search);
+  if (!params.has('api')) return;
+  params.delete('api');
+  const qs = params.toString();
+  const next = `${location.pathname}${qs ? `?${qs}` : ''}${location.hash}`;
+  history.replaceState(history.state, '', next);
+}
+
 function main() {
   applyTheme();
   bindUi();
-  const params = new URLSearchParams(location.search);
-  const api = params.get('api');
-  if (api && !state.settings.apiBase) {
-    state.settings.apiBase = api;
-    saveSettings();
-  }
-  // Default API if empty (optional convenience for this deployment)
-  if (!state.settings.apiBase) {
-    // leave empty — user configures; prefilled via ?api= still works
-  }
+  stripApiFromUrl();
   routeFromHash().catch((e) => toast(e.message));
 }
 

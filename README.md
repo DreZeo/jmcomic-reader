@@ -118,13 +118,7 @@ ALLOWED_ORIGINS = "https://你的用户名.github.io"
 rm -rf docs && mkdir -p docs && cp -r frontend/* docs/
 ```
 
-### 方式 B：URL 预填 API
-
-```
-https://你的用户名.github.io/仓库名/?api=https://jmcomic-api.xxx.workers.dev
-```
-
-首次打开会自动写入 localStorage。
+Worker API 地址只保存在浏览器 **localStorage**（设置页填写），**不会**写入 URL query，避免分享链接或历史记录泄露。
 
 ## 3. 前端使用
 
