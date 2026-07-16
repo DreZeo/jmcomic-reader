@@ -1,17 +1,34 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark" data-reader-bg="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a0a0f" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0b0c10" />
+  <meta name="color-scheme" content="dark light" />
   <meta name="description" content="JM Comic Reader — 沉浸式漫画阅读（Cloudflare Worker + GitHub Pages）" />
   <title>JM Reader</title>
+  <script>
+    (function () {
+      try {
+        var raw = localStorage.getItem('jm-reader-settings');
+        var s = raw ? JSON.parse(raw) : {};
+        var theme = s.theme === 'light' ? 'light' : 'dark';
+        var rb = s.readerBg;
+        if (rb !== 'light' && rb !== 'dark' && rb !== 'match') rb = 'dark';
+        var resolved = rb === 'match' ? theme : rb;
+        var root = document.documentElement;
+        root.setAttribute('data-theme', theme);
+        root.setAttribute('data-reader-bg', resolved);
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', theme === 'light' ? '#f6f7fb' : '#0b0c10');
+      } catch (e) { /* keep defaults */ }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f97316'/%3E%3Cpath d='M8 10h16v2.5H8zm0 5h12v2.5H8zm0 5h14v2.5H8z' fill='%230a0a0f'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Cpath d='M8 10h16v2.5H8zm0 5h12v2.5H8zm0 5h14v2.5H8z' fill='%23ffffff'/%3E%3C/svg%3E" />
 </head>
 <body>
   <a class="skip-link" href="#main">跳到主内容</a>
@@ -46,6 +63,7 @@
           </svg>
         </button>
       </div>
+
       <label class="field" for="api-base">
         <span class="field-label">API 地址</span>
         <input id="api-base" type="url" inputmode="url" placeholder="https://jmcomic-api.xxx.workers.dev" autocomplete="off" spellcheck="false" />
@@ -55,6 +73,42 @@
         <input id="use-proxy" type="checkbox" checked />
         <span>经 Worker 代理图片（推荐，解决 CDN 跨域）</span>
       </label>
+
+      <hr class="settings-divider" />
+
+      <div class="field">
+        <span class="field-label" id="theme-label">界面主题</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="theme-label">
+          <label>
+            <input type="radio" name="theme" value="dark" />
+            <span>深色</span>
+          </label>
+          <label>
+            <input type="radio" name="theme" value="light" />
+            <span>浅色</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label" id="reader-bg-label">阅读背景</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="reader-bg-label">
+          <label>
+            <input type="radio" name="reader-bg" value="dark" />
+            <span>深色</span>
+          </label>
+          <label>
+            <input type="radio" name="reader-bg" value="light" />
+            <span>浅色</span>
+          </label>
+          <label>
+            <input type="radio" name="reader-bg" value="match" />
+            <span>跟随主题</span>
+          </label>
+        </div>
+        <p class="hint" style="margin-top:0.45rem;margin-bottom:0">漫画页周围的 letterbox 底色，与界面主题独立。</p>
+      </div>
+
       <div class="dialog-actions">
         <button type="button" id="settings-cancel" class="btn ghost">取消</button>
         <button type="button" id="settings-save" class="btn primary">保存</button>
@@ -73,12 +127,23 @@
       <span class="brand-mark" aria-hidden="true">JM</span>
       <span class="brand-text">Reader</span>
     </div>
-    <button type="button" id="btn-settings" class="icon-btn" title="设置" aria-label="设置">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
-      </svg>
-    </button>
+    <div class="topbar-actions">
+      <button type="button" id="btn-theme" class="icon-btn" title="切换主题" aria-label="切换为浅色主题">
+        <svg class="theme-icon-sun" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 3v2M12 19v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3 12h2M19 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+        </svg>
+        <svg class="theme-icon-moon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <path d="M20 14.5A7.5 7.5 0 1 1 9.5 4 6 6 0 0 0 20 14.5z"/>
+        </svg>
+      </button>
+      <button type="button" id="btn-settings" class="icon-btn" title="设置" aria-label="设置">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+        </svg>
+      </button>
+    </div>
   </header>
 
   <main id="main">
@@ -86,9 +151,9 @@
     <section id="view-home" class="view" aria-label="首页">
       <div class="hero">
         <div class="hero-glow" aria-hidden="true"></div>
-        <p class="eyebrow">Cloudflare Worker · GitHub Pages</p>
+        <p class="eyebrow">JM Reader</p>
         <h1>沉浸式漫画阅读</h1>
-        <p class="sub">输入禁漫 ID / 链接，解析章节并在浏览器中还原乱序图片。</p>
+        <p class="sub">输入禁漫 ID 或链接，解析章节并在浏览器中还原乱序图片。</p>
 
         <form id="search-form" class="search-row" role="search">
           <label class="sr-only" for="search-input">作品 ID 或链接</label>
@@ -116,30 +181,7 @@
           </button>
         </form>
         <p id="home-error" class="error" role="alert" hidden></p>
-
-        <div class="feature-grid" aria-label="使用说明">
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-            </div>
-            <h3>部署 Worker</h3>
-            <p>将 <code>worker/</code> 发布到 Cloudflare</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-            </div>
-            <h3>填写 API</h3>
-            <p>在设置中粘贴 Workers 地址</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 19V5a1 1 0 0 1 1-1h7l2 2h5a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M8 12h8M8 15h5"/></svg>
-            </div>
-            <h3>开始阅读</h3>
-            <p>输入 jmid，点章节即可看图</p>
-          </article>
-        </div>
+        <p class="home-hint">首次使用请在设置中填写 Cloudflare Worker API 地址</p>
       </div>
     </section>
 

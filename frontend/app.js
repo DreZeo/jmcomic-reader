@@ -5,6 +5,7 @@
 
 const STORAGE_KEY = 'jm-reader-settings';
 const AGE_KEY = 'jm-reader-age-ok';
+const THEME_COLORS = { dark: '#0b0c10', light: '#f6f7fb' };
 
 const state = {
   settings: loadSettings(),
@@ -16,13 +17,31 @@ const state = {
 };
 
 function loadSettings() {
+  const defaults = {
+    apiBase: '',
+    useProxy: true,
+    theme: 'dark',
+    readerBg: 'dark',
+  };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { useProxy: true, apiBase: '', ...JSON.parse(raw) };
+    if (!raw) return { ...defaults };
+    const parsed = JSON.parse(raw);
+    const theme = parsed.theme === 'light' ? 'light' : 'dark';
+    let readerBg = parsed.readerBg;
+    if (readerBg !== 'light' && readerBg !== 'dark' && readerBg !== 'match') {
+      readerBg = 'dark';
+    }
+    return {
+      ...defaults,
+      ...parsed,
+      theme,
+      readerBg,
+      useProxy: parsed.useProxy !== false,
+    };
   } catch {
-    /* ignore */
+    return { ...defaults };
   }
-  return { apiBase: '', useProxy: true };
 }
 
 function saveSettings() {
@@ -31,6 +50,44 @@ function saveSettings() {
 
 function $(id) {
   return document.getElementById(id);
+}
+
+function resolveReaderBg(theme, readerBg) {
+  if (readerBg === 'match') return theme === 'light' ? 'light' : 'dark';
+  return readerBg === 'light' ? 'light' : 'dark';
+}
+
+function applyTheme() {
+  const theme = state.settings.theme === 'light' ? 'light' : 'dark';
+  state.settings.theme = theme;
+  const root = document.documentElement;
+  root.setAttribute('data-theme', theme);
+
+  const colorMeta = document.querySelector('meta[name="theme-color"]');
+  if (colorMeta) colorMeta.setAttribute('content', THEME_COLORS[theme]);
+
+  const schemeMeta = document.querySelector('meta[name="color-scheme"]');
+  if (schemeMeta) schemeMeta.setAttribute('content', theme);
+
+  const btn = $('btn-theme');
+  if (btn) {
+    const next = theme === 'dark' ? '浅色' : '深色';
+    btn.setAttribute('aria-label', `切换为${next}主题`);
+    btn.title = `切换为${next}主题`;
+  }
+
+  applyReaderBg();
+}
+
+function applyReaderBg() {
+  const resolved = resolveReaderBg(state.settings.theme, state.settings.readerBg);
+  document.documentElement.setAttribute('data-reader-bg', resolved);
+}
+
+function toggleTheme() {
+  state.settings.theme = state.settings.theme === 'light' ? 'dark' : 'light';
+  saveSettings();
+  applyTheme();
 }
 
 function toast(msg, ms = 2800) {
@@ -396,6 +453,20 @@ function backToAlbum() {
 function openSettings(force = false) {
   $('api-base').value = state.settings.apiBase || '';
   $('use-proxy').checked = state.settings.useProxy !== false;
+
+  const theme = state.settings.theme === 'light' ? 'light' : 'dark';
+  for (const el of document.querySelectorAll('input[name="theme"]')) {
+    el.checked = el.value === theme;
+  }
+
+  let readerBg = state.settings.readerBg;
+  if (readerBg !== 'light' && readerBg !== 'dark' && readerBg !== 'match') {
+    readerBg = 'dark';
+  }
+  for (const el of document.querySelectorAll('input[name="reader-bg"]')) {
+    el.checked = el.value === readerBg;
+  }
+
   $('settings-modal').hidden = false;
   setTimeout(() => $('api-base').focus(), 50);
   if (force) toast('请先配置 Worker API 地址');
@@ -436,6 +507,8 @@ function bindUi() {
     history.replaceState({ view: 'home' }, '', '#/');
   });
 
+  $('btn-theme')?.addEventListener('click', () => toggleTheme());
+
   $('btn-settings').addEventListener('click', () => openSettings());
   $('settings-cancel').addEventListener('click', closeSettings);
   $('settings-close')?.addEventListener('click', closeSettings);
@@ -445,7 +518,16 @@ function bindUi() {
   $('settings-save').addEventListener('click', () => {
     state.settings.apiBase = $('api-base').value.trim();
     state.settings.useProxy = $('use-proxy').checked;
+
+    const themeInput = document.querySelector('input[name="theme"]:checked');
+    state.settings.theme = themeInput?.value === 'light' ? 'light' : 'dark';
+
+    const rbInput = document.querySelector('input[name="reader-bg"]:checked');
+    const rb = rbInput?.value;
+    state.settings.readerBg = rb === 'light' || rb === 'match' ? rb : 'dark';
+
     saveSettings();
+    applyTheme();
     closeSettings();
     toast('设置已保存');
   });
@@ -505,6 +587,7 @@ async function routeFromHash() {
 }
 
 function main() {
+  applyTheme();
   bindUi();
   const params = new URLSearchParams(location.search);
   const api = params.get('api');
