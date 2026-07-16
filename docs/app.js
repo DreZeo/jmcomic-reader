@@ -244,8 +244,13 @@ async function mapPool(items, limit, worker) {
 async function fetchImageBlob(imgUrl, signal) {
   const errors = [];
 
+  // Worker proxy already races/falls back across CDNs + edge-caches.
+  // Prefer a single proxy hop; only rotate hosts client-side if that fails.
   if (state.settings.useProxy) {
-    for (const candidate of imageCandidateUrls(imgUrl)) {
+    const candidates = imageCandidateUrls(imgUrl);
+    // First try original URL once (Worker multi-CDN); then at most 2 more hosts.
+    const tryList = candidates.slice(0, 1).concat(candidates.slice(1, 3));
+    for (const candidate of tryList) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       const src = proxyImageUrl(candidate);
       try {

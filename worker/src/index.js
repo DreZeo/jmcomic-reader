@@ -124,14 +124,41 @@ function isAllowedProxyUrl(raw) {
   return true;
 }
 
-/** Same path on every known CDN host (primary first). */
+/** Isolate memory: remember last CDN host that worked for photo proxy. */
+let preferredProxyHost = null;
+
+/** Same path on known CDN hosts — preferred host first, then request host, then rest. */
 function proxyCandidateUrls(primary) {
   const u = new URL(primary);
-  const hosts = [u.hostname, ...[...ALLOWED_CDN_HOSTS].filter((h) => h !== u.hostname)];
-  return hosts.map((h) => `https://${h}${u.pathname}${u.search}`);
+  const rest = [...ALLOWED_CDN_HOSTS].filter(
+    (h) => h !== u.hostname && h !== preferredProxyHost,
+  );
+  const hosts = [];
+  if (preferredProxyHost && ALLOWED_CDN_HOSTS.has(preferredProxyHost)) {
+    hosts.push(preferredProxyHost);
+  }
+  if (!preferredProxyHost || preferredProxyHost !== u.hostname) {
+    hosts.push(u.hostname);
+  }
+  hosts.push(...rest);
+  const seen = new Set();
+  return hosts
+    .filter((h) => {
+      if (seen.has(h)) return false;
+      seen.add(h);
+      return true;
+    })
+    .map((h) => `https://${h}${u.pathname}${u.search}`);
 }
 
-async function fetchUpstreamImage(targetUrl) {
+function isImageishResponse(res) {
+  if (!res.ok) return false;
+  const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+  if (!ct) return true;
+  return ct.startsWith('image/') || ct.includes('octet-stream') || ct.includes('webp');
+}
+
+async function fetchUpstreamImage(targetUrl, signal) {
   const headers = {
     'User-Agent': UA,
     Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
@@ -140,11 +167,11 @@ async function fetchUpstreamImage(targetUrl) {
     Origin: 'https://18comic.vip',
   };
 
-  // Prefer plain fetch — cf cache options can break some upstreams.
   let res = await fetch(targetUrl, {
     method: 'GET',
     headers,
     redirect: 'follow',
+    signal,
   });
 
   // Retry once without Origin if blocked
@@ -157,10 +184,105 @@ async function fetchUpstreamImage(targetUrl) {
         Referer: 'https://18comic.vip/',
       },
       redirect: 'follow',
+      signal,
     });
   }
 
   return res;
+}
+
+/**
+ * Race the first N CDN candidates; first valid image wins.
+ * Remaining hosts are tried serially only if the race all fail.
+ */
+async function fetchFirstGoodImage(candidates, raceCount = 2) {
+  const attempts = [];
+  const race = candidates.slice(0, Math.max(1, raceCount));
+  const rest = candidates.slice(race.length);
+
+  if (race.length === 1) {
+    try {
+      const res = await fetchUpstreamImage(race[0]);
+      if (isImageishResponse(res)) {
+        preferredProxyHost = new URL(race[0]).hostname;
+        return { res, host: preferredProxyHost, attempts };
+      }
+      attempts.push(`${new URL(race[0]).hostname}:${res.status}`);
+    } catch {
+      attempts.push(`${new URL(race[0]).hostname}:err`);
+    }
+  } else {
+    const controller = new AbortController();
+    const tasks = race.map(async (candidate) => {
+      const host = new URL(candidate).hostname;
+      try {
+        const res = await fetchUpstreamImage(candidate, controller.signal);
+        if (!isImageishResponse(res)) {
+          return { ok: false, host, detail: String(res.status) };
+        }
+        return { ok: true, host, res, candidate };
+      } catch (e) {
+        if (e?.name === 'AbortError') return { ok: false, host, detail: 'abort' };
+        return { ok: false, host, detail: 'err' };
+      }
+    });
+
+    // Settle until first success, then abort siblings
+    const pending = new Set(tasks);
+    let winner = null;
+    while (pending.size && !winner) {
+      const settled = await Promise.race(
+        [...pending].map((p) => p.then((r) => ({ p, r }))),
+      );
+      pending.delete(settled.p);
+      if (settled.r.ok) {
+        winner = settled.r;
+        controller.abort();
+      } else {
+        attempts.push(`${settled.r.host}:${settled.r.detail}`);
+      }
+    }
+    // Drain losers (ignore)
+    await Promise.allSettled([...pending]);
+    if (winner) {
+      preferredProxyHost = winner.host;
+      return { res: winner.res, host: winner.host, attempts };
+    }
+  }
+
+  for (const candidate of rest) {
+    try {
+      const res = await fetchUpstreamImage(candidate);
+      if (!isImageishResponse(res)) {
+        attempts.push(`${new URL(candidate).hostname}:${res.status}`);
+        continue;
+      }
+      preferredProxyHost = new URL(candidate).hostname;
+      return { res, host: preferredProxyHost, attempts };
+    } catch {
+      attempts.push(`${new URL(candidate).hostname}:err`);
+    }
+  }
+
+  return { res: null, host: null, attempts };
+}
+
+/** Cache key by media path only so any CDN fill serves all hosts. */
+function proxyCacheKey(target) {
+  const u = new URL(target);
+  return new Request(`https://jm-proxy-cache.internal${u.pathname}`, { method: 'GET' });
+}
+
+function buildProxyResponse(body, contentType, request, env, cacheStatus) {
+  const out = new Headers();
+  out.set('Content-Type', contentType || 'image/webp');
+  // Browser + CF edge: comic pages are immutable enough for a day
+  out.set('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+  out.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  if (cacheStatus) out.set('X-Proxy-Cache', cacheStatus);
+  Object.entries(corsHeaders(request, env)).forEach(([k, v]) => out.set(k, v));
+  Object.entries(securityHeaders()).forEach(([k, v]) => out.set(k, v));
+  return new Response(body, { status: 200, headers: out });
 }
 
 async function handleProxy(request, env) {
@@ -170,50 +292,69 @@ async function handleProxy(request, env) {
     return errorJson(400, '无效的图片代理 URL', request, env);
   }
 
-  const attempts = [];
+  const cache = caches.default;
+  const cacheReq = proxyCacheKey(target);
+
   try {
-    for (const candidate of proxyCandidateUrls(target)) {
-      try {
-        const res = await fetchUpstreamImage(candidate);
-        if (!res.ok) {
-          attempts.push(`${new URL(candidate).hostname}:${res.status}`);
-          continue;
-        }
+    const cached = await cache.match(cacheReq);
+    if (cached) {
+      // Re-wrap so CORS matches this request's Origin
+      return buildProxyResponse(
+        cached.body,
+        cached.headers.get('Content-Type'),
+        request,
+        env,
+        'HIT',
+      );
+    }
+  } catch {
+    /* cache optional */
+  }
 
-        // Some CDNs return HTML error pages with 200 — require image-ish type or bytes
-        const ct = (res.headers.get('Content-Type') || '').toLowerCase();
-        if (ct && !ct.startsWith('image/') && !ct.includes('octet-stream') && !ct.includes('webp')) {
-          attempts.push(`${new URL(candidate).hostname}:bad-ct:${ct}`);
-          continue;
-        }
-
-        const out = new Headers();
-        out.set('Content-Type', ct || 'image/webp');
-        out.set('Cache-Control', 'public, max-age=3600');
-        // Allow canvas read from Pages
-        out.set('Cross-Origin-Resource-Policy', 'cross-origin');
-        Object.entries(corsHeaders(request, env)).forEach(([k, v]) => out.set(k, v));
-        Object.entries(securityHeaders()).forEach(([k, v]) => out.set(k, v));
-
-        return new Response(res.body, { status: 200, headers: out });
-      } catch (e) {
-        attempts.push(`${new URL(candidate).hostname}:err`);
-        continue;
-      }
+  try {
+    const candidates = proxyCandidateUrls(target);
+    const { res, attempts } = await fetchFirstGoodImage(candidates, 2);
+    if (!res) {
+      return jsonResponse(
+        {
+          code: 502,
+          success: false,
+          error: '图片代理失败',
+          detail: attempts.join(', ') || 'no attempts',
+        },
+        502,
+        request,
+        env,
+      );
     }
 
-    // Surface detail so frontend/debug can see why (not generic 服务器内部错误)
-    return jsonResponse(
-      {
-        code: 502,
-        success: false,
-        error: '图片代理失败',
-        detail: attempts.join(', ') || 'no attempts',
-      },
-      502,
-      request,
-      env,
-    );
+    const ct = (res.headers.get('Content-Type') || '').toLowerCase() || 'image/webp';
+    // Buffer once so we can both return and put in edge cache
+    const buf = await res.arrayBuffer();
+    if (!buf || buf.byteLength < 32) {
+      return jsonResponse(
+        {
+          code: 502,
+          success: false,
+          error: '图片代理失败',
+          detail: 'empty body',
+        },
+        502,
+        request,
+        env,
+      );
+    }
+
+    const response = buildProxyResponse(buf, ct, request, env, 'MISS');
+    try {
+      // Store a CORS-agnostic copy under the path key
+      const toCache = buildProxyResponse(buf, ct, request, env, 'STORE');
+      toCache.headers.set('Access-Control-Allow-Origin', '*');
+      await cache.put(cacheReq, toCache);
+    } catch {
+      /* ignore put failures */
+    }
+    return response;
   } catch (e) {
     return jsonResponse(
       {
