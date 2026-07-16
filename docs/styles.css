@@ -209,18 +209,8 @@ code {
   border-bottom: 1px solid var(--border);
 }
 
-body.reader-active .topbar {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-100%);
-  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
-}
-
-body.reader-active.chrome-visible .topbar {
-  opacity: 1;
-  pointer-events: auto;
-  transform: none;
-}
+/* Topbar stays visible in reader so Home / Settings remain reachable.
+   Only .reader-chrome auto-hides for immersion. */
 
 .topbar-actions {
   display: flex;

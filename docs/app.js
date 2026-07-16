@@ -138,6 +138,8 @@ function showView(name) {
   if (name === 'reader') {
     showChrome(true);
   } else {
+    clearTimeout(state.chromeTimer);
+    state.chromeTimer = null;
     document.body.classList.remove('chrome-visible');
   }
 }
@@ -145,9 +147,14 @@ function showView(name) {
 function showChrome(autoHide = true) {
   document.body.classList.add('chrome-visible');
   clearTimeout(state.chromeTimer);
+  state.chromeTimer = null;
   if (autoHide) {
     state.chromeTimer = setTimeout(() => {
-      document.body.classList.remove('chrome-visible');
+      // Only hide reader chrome while still reading
+      if (document.body.classList.contains('reader-active')) {
+        document.body.classList.remove('chrome-visible');
+      }
+      state.chromeTimer = null;
     }, 2800);
   }
 }
@@ -627,12 +634,13 @@ function bindUi() {
   $('btn-next-ch').addEventListener('click', () => goAdjacentChapter(1));
   $('btn-next-ch-2').addEventListener('click', () => goAdjacentChapter(1));
 
-  // Tap page area to toggle chrome in reader
+  // Tap page area to toggle reader toolbar (topbar always stays visible)
   $('reader-pages').addEventListener('click', () => {
     if (!document.body.classList.contains('reader-active')) return;
     if (document.body.classList.contains('chrome-visible')) {
       document.body.classList.remove('chrome-visible');
       clearTimeout(state.chromeTimer);
+      state.chromeTimer = null;
     } else {
       showChrome(true);
     }
