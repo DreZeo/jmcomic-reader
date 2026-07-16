@@ -3,17 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0c0d10" />
+  <meta name="theme-color" content="#0a0a0f" />
   <meta name="color-scheme" content="dark" />
+  <meta name="description" content="JM Comic Reader — 沉浸式漫画阅读（Cloudflare Worker + GitHub Pages）" />
   <title>JM Reader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f5c542'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-size='16' font-family='system-ui' fill='%23111'%3EJM%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23f97316'/%3E%3Cpath d='M8 10h16v2.5H8zm0 5h12v2.5H8zm0 5h14v2.5H8z' fill='%230a0a0f'/%3E%3C/svg%3E" />
 </head>
 <body>
+  <a class="skip-link" href="#main">跳到主内容</a>
+
   <!-- Age gate -->
-  <div id="age-gate" class="overlay" hidden>
+  <div id="age-gate" class="overlay" role="dialog" aria-modal="true" aria-labelledby="age-title" hidden>
     <div class="dialog">
-      <h1>内容提示</h1>
+      <div class="dialog-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75">
+          <path d="M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z"/>
+          <path d="M9.5 12.5l1.8 1.8 3.7-3.8"/>
+        </svg>
+      </div>
+      <h1 id="age-title">内容提示</h1>
       <p>本页面仅供个人学习 / 技术演示。内容可能包含成人向漫画。</p>
       <p class="muted">请确认你已年满当地法定成年年龄，并自行承担访问责任。</p>
       <div class="dialog-actions">
@@ -24,14 +36,21 @@
   </div>
 
   <!-- Settings modal -->
-  <div id="settings-modal" class="overlay" hidden>
+  <div id="settings-modal" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
     <div class="dialog">
-      <h2>设置</h2>
-      <label class="field">
-        <span>API 地址（Cloudflare Worker）</span>
-        <input id="api-base" type="url" placeholder="https://jmcomic-api.xxx.workers.dev" autocomplete="off" />
+      <div class="dialog-head">
+        <h2 id="settings-title">设置</h2>
+        <button type="button" id="settings-close" class="icon-btn" aria-label="关闭设置">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+        </button>
+      </div>
+      <label class="field" for="api-base">
+        <span class="field-label">API 地址</span>
+        <input id="api-base" type="url" inputmode="url" placeholder="https://jmcomic-api.xxx.workers.dev" autocomplete="off" spellcheck="false" />
       </label>
-      <p class="hint">部署 Worker 后把地址填在这里。前端会通过 <code>?jmid=</code> 与 <code>/proxy</code> 调用它。</p>
+      <p class="hint">填写已部署的 Cloudflare Worker 地址。前端通过 <code>?jmid=</code> 与 <code>/proxy</code> 调用。</p>
       <label class="check">
         <input id="use-proxy" type="checkbox" checked />
         <span>经 Worker 代理图片（推荐，解决 CDN 跨域）</span>
@@ -43,77 +62,140 @@
     </div>
   </div>
 
-  <header class="topbar">
-    <button type="button" id="btn-home" class="icon-btn" title="首页" aria-label="首页">⌂</button>
-    <div class="brand" id="brand">JM Reader</div>
-    <button type="button" id="btn-settings" class="icon-btn" title="设置" aria-label="设置">⚙</button>
+  <header class="topbar" id="topbar">
+    <button type="button" id="btn-home" class="icon-btn" title="首页" aria-label="首页">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+        <path d="M4 11.5 12 5l8 6.5"/>
+        <path d="M7 10.5V19h10v-8.5"/>
+      </svg>
+    </button>
+    <div class="brand" id="brand">
+      <span class="brand-mark" aria-hidden="true">JM</span>
+      <span class="brand-text">Reader</span>
+    </div>
+    <button type="button" id="btn-settings" class="icon-btn" title="设置" aria-label="设置">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+      </svg>
+    </button>
   </header>
 
-  <main>
-    <!-- Home / search -->
-    <section id="view-home" class="view">
+  <main id="main">
+    <!-- Home -->
+    <section id="view-home" class="view" aria-label="首页">
       <div class="hero">
-        <h1>JM Comic Reader</h1>
-        <p class="sub">输入禁漫 ID / 链接，通过 Cloudflare Worker 解析并阅读</p>
-        <form id="search-form" class="search-row">
-          <input
-            id="search-input"
-            type="search"
-            placeholder="例如 350234 或 JM350234 或专辑链接"
-            enterkeyhint="search"
-            autocomplete="off"
-            required
-          />
-          <button type="submit" class="btn primary">打开</button>
+        <div class="hero-glow" aria-hidden="true"></div>
+        <p class="eyebrow">Cloudflare Worker · GitHub Pages</p>
+        <h1>沉浸式漫画阅读</h1>
+        <p class="sub">输入禁漫 ID / 链接，解析章节并在浏览器中还原乱序图片。</p>
+
+        <form id="search-form" class="search-row" role="search">
+          <label class="sr-only" for="search-input">作品 ID 或链接</label>
+          <div class="search-field">
+            <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="M20 20l-3.5-3.5"/>
+            </svg>
+            <input
+              id="search-input"
+              type="search"
+              inputmode="search"
+              placeholder="例如 350234 / JM350234 / 专辑链接"
+              enterkeyhint="search"
+              autocomplete="off"
+              spellcheck="false"
+              required
+            />
+          </div>
+          <button type="submit" class="btn primary" id="btn-search">
+            <span>打开</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6"/>
+            </svg>
+          </button>
         </form>
-        <p id="home-error" class="error" hidden></p>
-        <div class="tips">
-          <h3>快速说明</h3>
-          <ol>
-            <li>先部署 <code>worker/</code> 到 Cloudflare</li>
-            <li>在设置里填写 Worker 地址</li>
-            <li>输入 jmid 即可浏览章节与图片</li>
-          </ol>
+        <p id="home-error" class="error" role="alert" hidden></p>
+
+        <div class="feature-grid" aria-label="使用说明">
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+            </div>
+            <h3>部署 Worker</h3>
+            <p>将 <code>worker/</code> 发布到 Cloudflare</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+            </div>
+            <h3>填写 API</h3>
+            <p>在设置中粘贴 Workers 地址</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 19V5a1 1 0 0 1 1-1h7l2 2h5a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M8 12h8M8 15h5"/></svg>
+            </div>
+            <h3>开始阅读</h3>
+            <p>输入 jmid，点章节即可看图</p>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- Album detail -->
-    <section id="view-album" class="view" hidden>
-      <div class="album-head">
+    <!-- Album -->
+    <section id="view-album" class="view" aria-label="作品详情" hidden>
+      <div class="album-hero">
+        <button type="button" id="btn-album-back" class="btn ghost sm">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          返回
+        </button>
         <div class="album-meta">
+          <p class="eyebrow" id="album-id-label">专辑</p>
           <h1 id="album-title">—</h1>
           <p id="album-authors" class="muted"></p>
+          <div id="album-stats" class="stat-row" aria-label="作品数据"></div>
           <div id="album-tags" class="tags"></div>
           <p id="album-desc" class="desc"></p>
-          <p id="album-stats" class="muted small"></p>
         </div>
       </div>
       <div class="section-title">
-        <h2>章节</h2>
-        <span id="chapter-count" class="muted"></span>
+        <h2>章节列表</h2>
+        <span id="chapter-count" class="pill"></span>
       </div>
       <div id="chapter-list" class="chapter-list"></div>
     </section>
 
     <!-- Reader -->
-    <section id="view-reader" class="view" hidden>
-      <div class="reader-toolbar">
-        <button type="button" id="btn-prev-ch" class="btn ghost sm">上一话</button>
-        <div id="reader-title" class="reader-title">—</div>
-        <button type="button" id="btn-next-ch" class="btn ghost sm">下一话</button>
+    <section id="view-reader" class="view view-reader" aria-label="阅读器" hidden>
+      <div class="reader-chrome" id="reader-chrome">
+        <div class="reader-toolbar">
+          <button type="button" id="btn-back-album" class="icon-btn" aria-label="返回目录">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <div class="reader-title-wrap">
+            <div id="reader-title" class="reader-title">—</div>
+            <div id="reader-progress" class="reader-progress muted small">—</div>
+          </div>
+          <div class="reader-nav">
+            <button type="button" id="btn-prev-ch" class="btn ghost sm" aria-label="上一话">上一话</button>
+            <button type="button" id="btn-next-ch" class="btn ghost sm" aria-label="下一话">下一话</button>
+          </div>
+        </div>
       </div>
+
       <div id="reader-pages" class="reader-pages"></div>
+
       <div class="reader-footer">
-        <button type="button" id="btn-back-album" class="btn ghost">返回目录</button>
+        <button type="button" id="btn-back-album-2" class="btn ghost">返回目录</button>
         <button type="button" id="btn-next-ch-2" class="btn primary">下一话</button>
       </div>
     </section>
   </main>
 
-  <div id="toast" class="toast" hidden></div>
-  <div id="loading" class="loading" hidden>
-    <div class="spinner"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="loading" class="loading" hidden aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
     <span id="loading-text">加载中…</span>
   </div>
 
